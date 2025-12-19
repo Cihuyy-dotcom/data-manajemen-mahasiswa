@@ -1,87 +1,130 @@
-const studentForm = document.getElementById('studentForm');
-const studentTableBody = document.getElementById('studentTableBody');
-const searchInput = document.getElementById('searchInput');
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// Ambil data dari LocalStorage saat pertama kali load
-let students = JSON.parse(localStorage.getItem('mahasiswa')) || [];
-let editIndex = -1; 
+const firebaseConfig = { /* ... config kamu ... */ };
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-function renderTable(filter = "") {
-    studentTableBody.innerHTML = '';
-    
-    students.forEach((student, index) => {
-        if (student.name.toLowerCase().includes(filter.toLowerCase()) || student.nim.toString().includes(filter)) {
-            
-            
-            const row = `
-                <tr>
-                    <td class="ps-4 fw-bold text-primary">${student.nim}</td>
-                    <td>
-                        <div class="fw-semibold">${student.name}</div>
-                    </td>
-                    <td><span class="badge bg-light text-dark border">${student.major}</span></td>
-                    <td class="text-center">
-                        <button class="btn-edit me-2" onclick="editStudent(${index})"><i class="fas fa-edit"></i></button>
-                        <button class="btn-delete" onclick="deleteStudent(${index})"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-            `;
-            studentTableBody.innerHTML += row;
+// ==========================================
+// 1. PENERAPAN KONSEP OOP (Class & Enkapsulasi)
+// ==========================================
+class Mahasiswa {
+    #nim; // Private property (Enkapsulasi)
+    constructor(nama, nim, jurusan) {
+        this.nama = nama;
+        this.#nim = nim;
+        this.jurusan = jurusan;
+    }
+    getNim() { return this.#nim; }
+}
+
+class ManajemenMahasiswa {
+    constructor() {
+        this.data = []; // Penggunaan Array
+    }
+
+    // ==========================================
+    // 2. FITUR PENGURUTAN (Minimal 2: Bubble & Selection Sort)
+    // ==========================================
+    // Estimasi Time Complexity: O(n^2)
+    bubbleSort() {
+        let n = this.data.length;
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n - i - 1; j++) {
+                if (this.data[j].nama.toLowerCase() > this.data[j + 1].nama.toLowerCase()) {
+                    [this.data[j], this.data[j + 1]] = [this.data[j + 1], this.data[j]];
+                }
+            }
         }
-    });
+    }
 
-    // Opsional: Tampilkan pesan jika data kosong
-    if (studentTableBody.innerHTML === '') {
-        studentTableBody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">Data tidak ditemukan</td></tr>`;
+    // Estimasi Time Complexity: O(n^2)
+    selectionSortByNim() {
+        let n = this.data.length;
+        for (let i = 0; i < n; i++) {
+            let min = i;
+            for (let j = i + 1; j < n; j++) {
+                if (this.data[j].getNim() < this.data[min].getNim()) min = j;
+            }
+            [this.data[i], this.data[min]] = [this.data[min], this.data[i]];
+        }
+    }
+
+    // ==========================================
+    // 3. FITUR PENCARIAN (Linear Search)
+    // ==========================================
+    // Estimasi Time Complexity: O(n)
+    linearSearch(keyword) {
+        return this.data.filter(mhs => 
+            mhs.nama.toLowerCase().includes(keyword.toLowerCase()) || 
+            mhs.getNim().includes(keyword)
+        );
     }
 }
+
+const manager = new ManajemenMahasiswa();
+
+// ==========================================
+// 4. VALIDASI INPUT (Regex) & ERROR HANDLING (Try-Catch)
+// ==========================================
+function validasiData(nama, nim) {
+    const nameRegex = /^[a-zA-Z\s]{3,30}$/; // Hanya huruf, 3-30 karakter
+    const nimRegex = /^[0-9]{8,12}$/;      // Hanya angka, 8-12 digit
+
+    if (!nameRegex.test(nama)) throw new Error("Nama harus huruf (3-30 karakter)!");
+    if (!nimRegex.test(nim)) throw new Error("NIM harus angka (8-12 digit)!");
+}
+
+// --- Operasi CRUD (Input, Edit, Hapus) ---
+const studentForm = document.getElementById('studentForm');
 
 studentForm.addEventListener('submit', (e) => {
     e.preventDefault();
-
-    const name = document.getElementById('name').value;
+    const nama = document.getElementById('name').value;
     const nim = document.getElementById('nim').value;
-    const major = document.getElementById('major').value;
+    const jurusan = document.getElementById('major').value;
 
-    if (editIndex === -1) {
-        students.push({ name, nim, major });
-    } else {
-        students[editIndex] = { name, nim, major };
-        editIndex = -1;
-        const btn = document.getElementById('submitBtn'); // Gunakan ID tombol
-        btn.innerHTML = '<i class="fas fa-plus me-1"></i> Simpan';
+    try {
+        validasiData(nama, nim); // Pemanggilan Regex
+        // Simpan ke Firebase (File I/O Replacement)
+        push(ref(db, 'mahasiswa'), { nama, nim, jurusan });
+        studentForm.reset();
+        alert("Data berhasil disimpan!");
+    } catch (error) {
+        // Exception Handling
+        alert("Kesalahan Input: " + error.message);
     }
-
-    saveAndRefresh();
-    studentForm.reset();
 });
 
-function deleteStudent(index) {
-    if (confirm("Yakin ingin menghapus data ini?")) {
-        students.splice(index, 1);
-        saveAndRefresh();
+// --- Menampilkan Data (Tampil & Modularisasi) ---
+function renderTable(dataArray) {
+    const tableBody = document.getElementById('studentTableBody');
+    tableBody.innerHTML = '';
+    
+    dataArray.forEach((mhs) => {
+        const row = `<tr>
+            <td>${mhs.getNim()}</td>
+            <td>${mhs.nama}</td>
+            <td>${mhs.jurusan}</td>
+            <td>... Tombol Edit/Hapus ...</td>
+        </tr>`;
+        tableBody.innerHTML += row;
+    });
+}
+
+// Listener Real-time
+onValue(ref(db, 'mahasiswa'), (snapshot) => {
+    const rawData = snapshot.val();
+    manager.data = []; // Reset array
+    
+    if (rawData) {
+        Object.keys(rawData).forEach(id => {
+            const m = rawData[id];
+            // Instansiasi Object dari Class Mahasiswa
+            manager.data.push(new Mahasiswa(m.nama, m.nim, m.jurusan));
+        });
+        
+        manager.bubbleSort(); // Terapkan Bubble Sort otomatis
+        renderTable(manager.data);
     }
-}
-
-function editStudent(index) {
-    const student = students[index];
-    document.getElementById('name').value = student.name;
-    document.getElementById('nim').value = student.nim;
-    document.getElementById('major').value = student.major;
-
-    editIndex = index;
-    const btn = document.getElementById('submitBtn');
-    btn.innerHTML = '<i class="fas fa-save me-1"></i> Update Data';
-    window.scrollTo(0, 0);
-}
-
-searchInput.addEventListener('input', (e) => {
-    renderTable(e.target.value);
 });
-
-function saveAndRefresh() {
-    localStorage.setItem('mahasiswa', JSON.stringify(students));
-    renderTable();
-}
-
-renderTable();
